@@ -1,0 +1,19 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Editor
+.idea/
+.vscode/
+*.swp
+*~
+
+# Swift Package Manager
+.build/
+.swiftpm/
+xcuserdata/
+
+# Build artifacts (published via GitHub Releases, not source control)
+StickyNotes/dist/
