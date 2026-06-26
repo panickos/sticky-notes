@@ -1,4 +1,5 @@
 /// macOS `.app` bundle identity and distribution metadata (Spec 05, Spec 08).
+/// Release versions follow semantic versioning (`MAJOR.MINOR.PATCH`); bump before tagging.
 public struct DistributionConfiguration: Equatable, Sendable {
     public static let v1 = DistributionConfiguration(
         bundleIdentifier: "dev.stickynotes.app",

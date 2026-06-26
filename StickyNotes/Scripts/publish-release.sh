@@ -8,7 +8,7 @@
 #   ./Scripts/publish-release.sh 1.0.0
 #   ./Scripts/publish-release.sh 1.0.1 --skip-tests
 #
-# Version must match DistributionConfiguration.v1.bundleVersion (currently 1.0.0).
+# Version must match DistributionConfiguration.v1.bundleVersion (semver MAJOR.MINOR.PATCH; currently 1.0.0).
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

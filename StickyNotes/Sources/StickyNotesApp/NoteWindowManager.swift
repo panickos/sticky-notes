@@ -24,6 +24,8 @@ final class NoteWindowManager {
     private var notes: [StickyNote] = []
     private var controllers: [UUID: NotePanelController] = [:]
     private var notesVisible = true
+    private var snapEngagements: [UUID: NoteSnapEngagement] = [:]
+    private var previousFrames: [UUID: NoteFrame] = [:]
 
     var notesAreVisible: Bool { notesVisible }
     var onVisibilityChanged: (() -> Void)?
@@ -139,6 +141,34 @@ final class NoteWindowManager {
         persistSoon()
     }
 
+    func beginSnapGesture(noteID: UUID) {
+        snapEngagements.removeValue(forKey: noteID)
+    }
+
+    func endSnapGesture(noteID: UUID) {
+        snapEngagements.removeValue(forKey: noteID)
+    }
+
+    func applyShadowDrag(noteID: UUID, shadowOrigin: CGPoint) {
+        guard let note = notes.first(where: { $0.id == noteID }) else { return }
+
+        let shadowFrame = NoteFrame(
+            x: shadowOrigin.x,
+            y: shadowOrigin.y,
+            width: note.frame.width,
+            height: note.frame.height
+        )
+
+        let displayFrame = resolveSnapDisplayFrame(
+            noteID: noteID,
+            proposed: shadowFrame,
+            resizeEdges: nil
+        )
+
+        applyDisplayFrame(noteID: noteID, displayFrame: displayFrame)
+        previousFrames[noteID] = shadowFrame
+    }
+
     private func openPanel(for note: StickyNote, startEditing: Bool = false) {
         let bindings = StickyNoteHotkeyBindings.v1Defaults
         let controller = NotePanelController(
@@ -148,8 +178,8 @@ final class NoteWindowManager {
             onContentChange: { [weak self] noteID, content in
                 self?.updateContent(noteID: noteID, content: content)
             },
-            onFrameChange: { [weak self] noteID, frame in
-                self?.updateFrame(noteID: noteID, frame: frame)
+            onFrameChange: { [weak self] noteID, frame, changeKind in
+                self?.handleFrameChange(noteID: noteID, frame: frame, changeKind: changeKind)
             },
             onDelete: { [weak self] noteID in
                 self?.deleteNote(id: noteID)
@@ -162,6 +192,15 @@ final class NoteWindowManager {
             },
             onFocus: { [weak self] noteID in
                 self?.focusNote(id: noteID)
+            },
+            onSnapGestureBegin: { [weak self] noteID in
+                self?.beginSnapGesture(noteID: noteID)
+            },
+            onSnapGestureEnd: { [weak self] noteID in
+                self?.endSnapGesture(noteID: noteID)
+            },
+            onShadowDrag: { [weak self] noteID, shadowOrigin in
+                self?.applyShadowDrag(noteID: noteID, shadowOrigin: shadowOrigin)
             }
         )
         controllers[note.id] = controller
@@ -175,6 +214,8 @@ final class NoteWindowManager {
 
     private func closePanel(for noteID: UUID) {
         guard let controller = controllers.removeValue(forKey: noteID) else { return }
+        snapEngagements.removeValue(forKey: noteID)
+        previousFrames.removeValue(forKey: noteID)
         controller.close()
     }
 
@@ -189,6 +230,54 @@ final class NoteWindowManager {
         guard notes[index].frame != frame else { return }
         notes[index].touchFrame(frame)
         persistSoon()
+    }
+
+    private func handleFrameChange(
+        noteID: UUID,
+        frame rawFrame: NoteFrame,
+        changeKind: NotePanelFrameChangeKind
+    ) {
+        let previous = previousFrames[noteID] ?? notes.first(where: { $0.id == noteID })?.frame
+        let resizeEdges: NoteSnapResizeEdges?
+        switch changeKind {
+        case .move:
+            resizeEdges = nil
+        case .resize:
+            resizeEdges = previous.map { NoteSnapResolver.resizeEdges(from: $0, to: rawFrame) }
+        }
+
+        let displayFrame = resolveSnapDisplayFrame(
+            noteID: noteID,
+            proposed: rawFrame,
+            resizeEdges: resizeEdges
+        )
+
+        applyDisplayFrame(noteID: noteID, displayFrame: displayFrame)
+        previousFrames[noteID] = rawFrame
+    }
+
+    private func resolveSnapDisplayFrame(
+        noteID: UUID,
+        proposed: NoteFrame,
+        resizeEdges: NoteSnapResizeEdges?
+    ) -> NoteFrame {
+        let result = NoteSnapResolver.snappedFrame(
+            proposed: proposed,
+            noteID: noteID,
+            otherNotes: notes,
+            previousEngagement: snapEngagements[noteID],
+            resizeEdges: resizeEdges
+        )
+
+        snapEngagements[noteID] = result.engagement
+        return result.frame
+    }
+
+    private func applyDisplayFrame(noteID: UUID, displayFrame: NoteFrame) {
+        if controllers[noteID]?.currentFrame() != displayFrame {
+            controllers[noteID]?.applyFrame(displayFrame)
+        }
+        updateFrame(noteID: noteID, frame: displayFrame)
     }
 
     private func persistSoon() {
@@ -240,6 +329,12 @@ final class NoteEditingState: ObservableObject {
 }
 
 @MainActor
+enum NotePanelFrameChangeKind: Hashable {
+    case move
+    case resize
+}
+
+@MainActor
 final class NotePanelController: NSObject {
     let panel: NSPanel
     private let noteID: UUID
@@ -252,11 +347,14 @@ final class NotePanelController: NSObject {
         toggleShortcut: String,
         newNoteShortcut: String,
         onContentChange: @escaping (UUID, String) -> Void,
-        onFrameChange: @escaping (UUID, NoteFrame) -> Void,
+        onFrameChange: @escaping (UUID, NoteFrame, NotePanelFrameChangeKind) -> Void,
         onDelete: @escaping (UUID) -> Void,
         onDuplicate: @escaping (UUID) -> Void,
         onColorChange: @escaping (UUID, NoteColor) -> Void,
-        onFocus: @escaping (UUID) -> Void
+        onFocus: @escaping (UUID) -> Void,
+        onSnapGestureBegin: @escaping (UUID) -> Void,
+        onSnapGestureEnd: @escaping (UUID) -> Void,
+        onShadowDrag: @escaping (UUID, CGPoint) -> Void
     ) {
         noteID = note.id
         frameObserver = NotePanelFrameObserver()
@@ -267,7 +365,10 @@ final class NotePanelController: NSObject {
             onContentChange: onContentChange,
             onDelete: onDelete,
             onDuplicate: onDuplicate,
-            onColorChange: onColorChange
+            onColorChange: onColorChange,
+            onSnapGestureBegin: onSnapGestureBegin,
+            onSnapGestureEnd: onSnapGestureEnd,
+            onShadowDrag: onShadowDrag
         )
 
         let contentRect = NSRect(
@@ -284,7 +385,13 @@ final class NotePanelController: NSObject {
 
         super.init()
 
-        frameObserver.onFrameChange = { frame in
+        frameObserver.onLiveResizeBegin = {
+            onSnapGestureBegin(note.id)
+        }
+        frameObserver.onLiveResizeEnd = {
+            onSnapGestureEnd(note.id)
+        }
+        frameObserver.onFrameChange = { frame, changeKind in
             onFrameChange(
                 note.id,
                 NoteFrame(
@@ -292,7 +399,8 @@ final class NotePanelController: NSObject {
                     y: frame.origin.y,
                     width: frame.size.width,
                     height: frame.size.height
-                )
+                ),
+                changeKind
             )
         }
         frameObserver.onBecameKey = {
@@ -335,6 +443,14 @@ final class NotePanelController: NSObject {
         activateForEditing()
     }
 
+    func applyFrame(_ frame: NoteFrame) {
+        frameObserver.suppressDeliveryCount = 2
+        panel.setFrame(
+            NSRect(x: frame.x, y: frame.y, width: frame.width, height: frame.height),
+            display: true
+        )
+    }
+
     private func makeRootView(for note: StickyNote) -> StickyNoteView {
         StickyNoteView(
             note: note,
@@ -355,7 +471,25 @@ final class NotePanelController: NSObject {
             },
             onFocus: { [weak self] in
                 self?.activateForEditing()
+            },
+            onSnapGestureBegin: { [viewCallbacks] in
+                viewCallbacks.onSnapGestureBegin(viewCallbacks.noteID)
+            },
+            onSnapGestureEnd: { [viewCallbacks] in
+                viewCallbacks.onSnapGestureEnd(viewCallbacks.noteID)
+            },
+            onShadowDrag: { [viewCallbacks] origin in
+                viewCallbacks.onShadowDrag(viewCallbacks.noteID, origin)
             }
+        )
+    }
+
+    func currentFrame() -> NoteFrame {
+        NoteFrame(
+            x: panel.frame.origin.x,
+            y: panel.frame.origin.y,
+            width: panel.frame.size.width,
+            height: panel.frame.size.height
         )
     }
 }
@@ -369,13 +503,23 @@ private struct NoteViewCallbacks {
     let onDelete: (UUID) -> Void
     let onDuplicate: (UUID) -> Void
     let onColorChange: (UUID, NoteColor) -> Void
+    let onSnapGestureBegin: (UUID) -> Void
+    let onSnapGestureEnd: (UUID) -> Void
+    let onShadowDrag: (UUID, CGPoint) -> Void
 }
 
 @MainActor
 final class NotePanelFrameObserver: NSObject, NSWindowDelegate {
-    var onFrameChange: ((NSRect) -> Void)?
+    var onFrameChange: ((NSRect, NotePanelFrameChangeKind) -> Void)?
     var onBecameKey: (() -> Void)?
     var onResignKey: (() -> Void)?
+    var onLiveResizeBegin: (() -> Void)?
+    var onLiveResizeEnd: (() -> Void)?
+    var suppressDeliveryCount = 0
+
+    private var pendingFrame: NSRect?
+    private var pendingKinds: Set<NotePanelFrameChangeKind> = []
+    private var flushScheduled = false
 
     func windowDidBecomeKey(_ notification: Notification) {
         NSApp.activate(ignoringOtherApps: true)
@@ -387,15 +531,45 @@ final class NotePanelFrameObserver: NSObject, NSWindowDelegate {
     }
 
     func windowDidMove(_ notification: Notification) {
-        deliverFrame(from: notification)
+        enqueueFrame(from: notification, changeKind: .move)
     }
 
     func windowDidResize(_ notification: Notification) {
-        deliverFrame(from: notification)
+        enqueueFrame(from: notification, changeKind: .resize)
     }
 
-    private func deliverFrame(from notification: Notification) {
+    func windowWillStartLiveResize(_ notification: Notification) {
+        onLiveResizeBegin?()
+    }
+
+    func windowDidEndLiveResize(_ notification: Notification) {
+        onLiveResizeEnd?()
+    }
+
+    private func enqueueFrame(from notification: Notification, changeKind: NotePanelFrameChangeKind) {
+        if suppressDeliveryCount > 0 {
+            suppressDeliveryCount -= 1
+            return
+        }
         guard let window = notification.object as? NSWindow else { return }
-        onFrameChange?(window.frame)
+
+        pendingFrame = window.frame
+        pendingKinds.insert(changeKind)
+
+        guard !flushScheduled else { return }
+        flushScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            self?.flushPendingFrame()
+        }
+    }
+
+    private func flushPendingFrame() {
+        flushScheduled = false
+        guard let frame = pendingFrame else { return }
+
+        let changeKind: NotePanelFrameChangeKind = pendingKinds.contains(.resize) ? .resize : .move
+        pendingFrame = nil
+        pendingKinds.removeAll()
+        onFrameChange?(frame, changeKind)
     }
 }

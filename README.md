@@ -25,7 +25,9 @@ See [StickyNotes/README.md](StickyNotes/README.md) for hotkeys, AeroSpace matrix
 
 ## Publish a release
 
-From the repo root, after committing your changes:
+Versions follow [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`). The canonical version lives in `DistributionConfiguration.v1` (`bundleVersion` / `CFBundleVersion`); git tags use the `v` prefix (e.g. `v1.0.0`).
+
+From the repo root, after committing your changes and bumping the version in `DistributionConfiguration.swift`:
 
 ```bash
 ./StickyNotes/Scripts/publish-release.sh 1.0.0
@@ -42,7 +44,7 @@ Options:
 
 | Path | Purpose |
 |------|---------|
-| `specs/` | Locked product specifications (00–08) |
+| `specs/` | Locked product specifications (00–09) |
 | `StickyNotes/` | Swift package and macOS app |
 | `PROGRESS.md` | Implementation task board |
 | `AGENTS.md` | Agent context for AI-assisted development |

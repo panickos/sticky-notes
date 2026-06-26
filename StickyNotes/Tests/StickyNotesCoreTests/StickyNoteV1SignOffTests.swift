@@ -89,6 +89,14 @@ struct V1SignOffValidatorTests {
         #expect(aerospace?.passes == true)
     }
 
+    @Test("note snap prerequisites delegate to NoteSnapGateValidator")
+    func noteSnapPrerequisites() {
+        #expect(NoteSnapGateValidator.allPrerequisitesPass())
+        let validations = V1SignOffValidator.validate()
+        let snap = validations.first { $0.prerequisite == .noteSnapPrerequisitesMet }
+        #expect(snap?.passes == true)
+    }
+
     @Test("floating-only panel level fails always-on-top prerequisite")
     func floatingLevelFailsAlwaysOnTop() {
         let config = NotePanelConfiguration(

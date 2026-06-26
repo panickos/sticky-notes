@@ -8,12 +8,12 @@ macOS menu-bar utility: floating sticky notes always on top of other windows, ma
 
 ## Current focus
 
-**Phase 2 — v1 sign-off** — Task 2.1 complete: automated Spec 07 gate (`V1SignOffValidator`). Manual sign-off pending (daily-use polish, packaged app launch).
+**v1.0.0 released** — Specs 00–09 implemented; automated sign-off gate passes (157 tests). Future work uses [semantic versioning](https://semver.org/) (`MAJOR.MINOR.PATCH`); bump `DistributionConfiguration.v1.bundleVersion` and tag `v*` before publishing.
 
 ## Repo layout
 
 ```
-specs/           Locked product specs (00–08)
+specs/           Locked product specs (00–09)
 PROGRESS.md      Task board, TDD log, lessons learned
 StickyNotes/     Swift package + macOS app
   Sources/

@@ -106,6 +106,8 @@ public enum V1SignOffValidator {
             return AerospaceConfigurationValidator.allPrerequisitesPass(
                 configuration: panelConfiguration
             )
+        case .noteSnapPrerequisitesMet:
+            return NoteSnapGateValidator.allPrerequisitesPass()
         }
     }
 

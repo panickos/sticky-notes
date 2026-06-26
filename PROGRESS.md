@@ -1,10 +1,10 @@
 # Sticky Notes — Implementation Progress
 
-Last updated: 2026-06-19 (Task 2.2 app icon + start at login)
+Last updated: 2026-06-25 (v1.0.0 release)
 
 ## Current phase
 
-**Phase 2 — Distribution & v1 sign-off** — app icon and login item added; manual sign-off pending
+**v1.0.0 released** — Phase 2 complete. Specs 00–09 implemented; automated sign-off gate passes (157 tests). Subsequent releases use semantic versioning; see README “Publish a release”.
 
 ## Task board
 
@@ -24,10 +24,108 @@ Last updated: 2026-06-19 (Task 2.2 app icon + start at login)
 | 2.0 | Distribution packaging | ✅ Complete | 10 new tests; `DistributionConfiguration` + `Scripts/package-app.sh` |
 | 2.1 | v1 sign-off gate | ✅ Complete | 15 new tests; `V1DefinitionOfDone` + `V1SignOffValidator` |
 | 2.2 | App icon + start at login | ✅ Complete | 8 new tests; `AppIcon.icns`, `LoginItemController`, menu toggle |
+| 2.3 | Note-to-note snapping (Spec 09) | ✅ Complete | 12 new tests; `NoteSnapResolver` wired on move/resize |
+| 2.4 | Spec 09 sign-off gate | ✅ Complete | 11 new tests; `NoteSnapAcceptanceMatrix` + `NoteSnapGateValidator`; wired into `V1SignOffValidator` |
 
-## Active task: manual v1 sign-off
+## Active task
 
-Automated Spec 07 prerequisite gate passes (123 tests). Next: user confirms manual acceptance (daily-use polish, packaged app launch, hotkeys from foreground app).
+None — v1.0.0 shipped. Next features start at `1.1.0` or `2.0.0` per semver, with spec updates as needed.
+
+---
+
+## Completed: 2.4 Spec 09 sign-off gate
+
+### Goal
+
+Codify Spec 09 acceptance criteria in `StickyNotesCore` with automated resolver smoke validation and a structured checklist for manual sign-off — mirroring the Spec 08 AeroSpace matrix and Spec 07 v1 gate patterns.
+
+### Definition of done
+
+- [x] `NoteSnapScenario`, `NoteSnapAcceptanceMatrix`, and `NoteSnapGateValidator` in `StickyNotesCore`
+- [x] All twelve Spec 09 scenarios catalogued (7 automated, 5 manual) with user action, expected behavior, and verification kind
+- [x] Eight resolver/configuration prerequisites validated via deterministic smoke fixtures
+- [x] `automatedSnapGatePasses()` confirms every automated scenario's prerequisites pass
+- [x] Negative tests: spec-default thresholds (5/2/5) and zero attraction zone fail gate
+- [x] `noteSnapPrerequisitesMet` wired into `V1SignOffValidator` and `V1DefinitionOfDone.specs01Through06Met`
+- [x] Document decision and lessons learned
+- [ ] Manual: live snap during drag/resize, create/duplicate unchanged, AeroSpace matrix still passes (Spec 09)
+
+### TDD log
+
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | Write `StickyNoteSnapGateTests` — matrix catalog, validator, gate, negative paths | ✅ 11 tests (failing) |
+| 2 | Implement `NoteSnapAcceptanceMatrix`, `NoteSnapGateValidator` | ✅ Core logic passes |
+| 3 | Wire `noteSnapPrerequisitesMet` into `V1SignOffValidator` + `V1DefinitionOfDone` | ✅ V1 gate extended |
+| 4 | Re-run full suite | ✅ 154 tests passing |
+| 5 | Bugbot review — pre-existing `NoteWindowManager` shadow-drag findings noted (out of scope) | ✅ No gate regressions |
+| 6 | Manual: Spec 09 acceptance matrix | ⏳ Pending user confirmation |
+
+### Manual verification
+
+Run automated gate and live snap checks:
+
+```bash
+cd StickyNotes
+swift test --filter SnapGate
+.build/debug/StickyNotes
+```
+
+Confirm:
+- `NoteSnapGateValidator.automatedSnapGatePasses()` is true (also covered by 11 unit tests)
+- `V1SignOffValidator.automatedSignOffGatePasses()` still passes with snap prerequisite
+- Drag a note within 12 pt of a neighbor edge — live snap with visible 2 pt gap
+- Drag past 15 pt from snapped position — note moves freely; overlap allowed
+- Resize bottom or right edge near a neighbor — only the dragged edge snaps live
+- Create / duplicate placement unchanged (no automatic snap)
+- With AeroSpace active: drag / resize still does not retile notes (Spec 08 matrix row)
+
+---
+
+## Completed: 2.3 Note-to-note snapping (Spec 09)
+
+### Goal
+
+Deliver casual note-to-note magnetic alignment during header drag and resize — 5 pt attraction, 2 pt gap, snap release after 5 pt pull-away — without changing window type, level, or AeroSpace behavior.
+
+### Definition of done
+
+- [x] `NoteSnapConfiguration`, `NoteSnapResolver`, `NoteSnapEngagement`, and `NoteSnapResizeEdges` in `StickyNotesCore`
+- [x] Side snap within 5 pt with 2 pt gap and perpendicular overlap; corner snap within 5 pt with 2 pt gap on both axes
+- [x] No snap beyond attraction zone; release after dragging > 5 pt from engaged snap position
+- [x] Closest candidate wins; side beats corner on equal distance; deterministic side-edge ordering on side ties
+- [x] Resize considers dragged edges only; notes do not snap to themselves; single-note session unchanged
+- [x] `NoteWindowManager` wires snap on move/resize with coalesced delegate delivery and programmatic frame apply
+- [x] Document decision and lessons learned
+- [ ] Manual: live snap during drag/resize, create/duplicate unchanged, AeroSpace matrix still passes (Spec 09)
+
+### TDD log
+
+| Step | Action | Result |
+|------|--------|--------|
+| 1 | Write `StickyNoteSnapTests` — side/corner snap, release, tie-break, resize edges, self/solo | ✅ 10 tests (failing) |
+| 2 | Implement `NoteSnapConfiguration`, `NoteSnapResolver` | ✅ Core logic passes |
+| 3 | Wire `NoteWindowManager` — snap on move/resize, coalesced observer, `applyFrame` | ✅ App builds |
+| 4 | Re-run full suite | ✅ 140 tests passing |
+| 5 | Bugbot review — fix resize/move coalescing and dual-callback suppress | ✅ Addressed |
+| 6 | Manual: Spec 09 acceptance matrix | ⏳ Pending user confirmation |
+
+### Manual verification
+
+Run the app with at least two overlapping notes:
+
+```bash
+cd StickyNotes
+swift build
+.build/debug/StickyNotes
+```
+
+Confirm:
+- Drag a note within 5 pt of a neighbor edge — live snap with visible 2 pt gap
+- Drag past 5 pt from snapped position — note moves freely; overlap allowed
+- Resize bottom or right edge near a neighbor — only the dragged edge snaps live
+- Create / duplicate placement unchanged (no automatic snap)
+- With AeroSpace active: drag / resize still does not retile notes (Spec 08 matrix row)
 
 ---
 
@@ -41,7 +139,7 @@ Codify Spec 07 definition of done in `StickyNotesCore` with automated configurat
 
 - [x] `V1SignOffCriterion`, `V1DefinitionOfDone`, and `V1SignOffValidator` in `StickyNotesCore`
 - [x] All six Spec 07 criteria catalogued with user action, expected behavior, and verification kind
-- [x] Thirteen configuration prerequisites validated against v1 configs (panel, actions, markdown, persistence, shell, distribution, hotkeys, aerospace)
+- [x] Fourteen configuration prerequisites validated against v1 configs (panel, actions, markdown, persistence, shell, distribution, hotkeys, aerospace, note snap)
 - [x] `automatedSignOffGatePasses()` confirms every automated criterion's prerequisites pass
 - [x] Negative tests: floating-only level, incomplete hotkey bindings, and gate failure on bad config
 - [x] `StickyNoteHotkeyBindings.boundActions` and `binding(for:)` for injectable hotkey validation
@@ -486,6 +584,36 @@ Prove sticky note windows stay on top of tiled apps and survive AeroSpace worksp
 | 5 | Manual AeroSpace matrix (Spec 08) | ✅ Confirmed 2026-06-18 (see Task 1.3.4) |
 
 ## Lessons learned
+
+### Spec 09 sign-off gate (2026-06-22)
+
+1. **Matrix catalog in core** — `NoteSnapAcceptanceMatrix.v1` maps each Spec 09 scenario to user action, expected behavior, and verification kind. Manual acceptance (live drag, AeroSpace row) stays separate from automated resolver smoke tests.
+
+2. **Smoke fixtures mirror unit tests** — `NoteSnapGateValidator` embeds deterministic resolver scenarios aligned with `StickyNoteSnapTests` so the gate catches regressions without duplicating the full resolver test suite.
+
+3. **Tuned thresholds are a prerequisite** — `tunedThresholds` compares against `NoteSnapConfiguration.v1` (12/2/15), not Spec 09's original 5/5 values. Spec-default config fails the gate intentionally.
+
+4. **V1 gate delegation** — `.noteSnapPrerequisitesMet` delegates to `NoteSnapGateValidator.allPrerequisitesPass()` and is included in `.specs01Through06Met` prerequisites alongside aerospace.
+
+5. **Manual bar remains user-owned** — Live snap feel, create/duplicate unchanged, and AeroSpace drag/resize row cannot be automated; gate only validates resolver + config prerequisites.
+
+### Note-to-note snapping (2026-06-22)
+
+1. **Pure snap resolver in core** — `NoteSnapResolver` accepts proposed frame, neighbor notes, optional engagement, and resize edges. AppKit stays in `NoteWindowManager`; Spec 09 thresholds live in `NoteSnapConfiguration.v1`.
+
+2. **Side snap needs perpendicular overlap** — Use inclusive overlap (`<=` / `>=`) so edge-touching notes still qualify. Notes entirely below/above a target fail side snap on horizontal edges; corner snap still applies diagonally.
+
+3. **Tie-break is explicit** — Minimum distance wins; side beats corner at equal distance; side-edge enum order breaks side-vs-side ties (left first).
+
+4. **Resize vs move delegate coalescing** — Top/left resize fires both `windowDidMove` and `windowDidResize`. Coalesce on the main queue and prefer `.resize` so only dragged edges seek snap targets.
+
+5. **Programmatic snap apply** — `applyFrame` sets `suppressDeliveryCount = 2` because `setFrame` can emit both move and resize callbacks. Persisted coordinates remain plain frame values (no lock-to-neighbor metadata).
+
+6. **Engagement release is axis-aware** — Side engagement compares the engaged edge coordinate; corner engagement uses corner-point distance. Pull-away > release threshold clears engagement and allows overlap.
+
+7. **Manual polish tuning (2026-06-22)** — Spec 09 originally specified 5 pt attraction/release; daily use felt too tight. v1 config is now **12 pt attraction / 15 pt release** (hysteresis). Side snap also compares **parallel edges only** (left/right vs left/right) — cross-axis comparisons caused spurious or missing snaps on non-square notes.
+
+8. **Shadow-tracked header drag (2026-06-22)** — Replaced `performDrag` with manual mouse tracking. While snapped, the shadow origin follows the cursor but the panel stays on the snapped display frame until release threshold — no fight between AppKit drag and `setFrame`. Snap may re-engage multiple times per gesture (including switching neighbors) once shadow tracking replaced the old gesture-level snap latch.
 
 ### App icon + start at login (2026-06-19)
 

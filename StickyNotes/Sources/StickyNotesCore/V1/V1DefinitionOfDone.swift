@@ -23,6 +23,7 @@ public enum V1ConfigurationPrerequisite: String, CaseIterable, Sendable {
     case distributionNoDockBundle
     case globalHotkeyBindings
     case aerospacePrerequisitesMet
+    case noteSnapPrerequisitesMet
 }
 
 public enum V1VerificationKind: String, Sendable {
@@ -88,6 +89,7 @@ public struct V1DefinitionOfDone: Equatable, Sendable {
                 .menuBarShellConfiguration,
                 .globalHotkeyBindings,
                 .aerospacePrerequisitesMet,
+                .noteSnapPrerequisitesMet,
             ]
         ),
         V1SignOffCase(

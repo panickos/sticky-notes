@@ -2,22 +2,28 @@ import AppKit
 import SwiftUI
 
 enum WindowDragMode: Equatable {
-    /// Header-style: native panel drag begins on mouse down.
-    case immediate
-    /// Body-style: small movement drags; mouse up without drag invokes click.
+    /// Tracks mouse delta as a shadow origin; the window manager owns on-screen position (Spec 09 snap).
+    case shadowTracked
+    /// Small movement drags via shadow tracking; mouse up without drag invokes click.
     case dragOrClick
 }
 
-/// Native window drag from a SwiftUI overlay.
+/// Window drag from a SwiftUI overlay. Does not use `performDrag` so snap can lock display while tracking shadow.
 struct WindowDragHandle: NSViewRepresentable {
-    var mode: WindowDragMode = .immediate
+    var mode: WindowDragMode = .shadowTracked
     var onMouseDown: () -> Void
+    var onDragBegin: (() -> Void)?
+    var onDragEnd: (() -> Void)?
+    var onShadowDrag: ((CGPoint) -> Void)?
     var onClick: (() -> Void)?
 
     func makeNSView(context: Context) -> WindowDragHandleView {
         let view = WindowDragHandleView()
         view.mode = mode
         view.onMouseDown = onMouseDown
+        view.onDragBegin = onDragBegin
+        view.onDragEnd = onDragEnd
+        view.onShadowDrag = onShadowDrag
         view.onClick = onClick
         return view
     }
@@ -25,13 +31,19 @@ struct WindowDragHandle: NSViewRepresentable {
     func updateNSView(_ nsView: WindowDragHandleView, context: Context) {
         nsView.mode = mode
         nsView.onMouseDown = onMouseDown
+        nsView.onDragBegin = onDragBegin
+        nsView.onDragEnd = onDragEnd
+        nsView.onShadowDrag = onShadowDrag
         nsView.onClick = onClick
     }
 }
 
 final class WindowDragHandleView: NSView {
-    var mode: WindowDragMode = .immediate
+    var mode: WindowDragMode = .shadowTracked
     var onMouseDown: (() -> Void)?
+    var onDragBegin: (() -> Void)?
+    var onDragEnd: (() -> Void)?
+    var onShadowDrag: ((CGPoint) -> Void)?
     var onClick: (() -> Void)?
 
     private var dragStartMouse: NSPoint?
@@ -43,41 +55,42 @@ final class WindowDragHandleView: NSView {
     override func mouseDown(with event: NSEvent) {
         onMouseDown?()
 
-        switch mode {
-        case .immediate:
-            window?.performDrag(with: event)
-        case .dragOrClick:
-            dragStartMouse = NSEvent.mouseLocation
-            dragStartWindowOrigin = window?.frame.origin
-            didDrag = false
+        dragStartMouse = NSEvent.mouseLocation
+        dragStartWindowOrigin = window?.frame.origin
+        didDrag = false
+
+        if mode == .shadowTracked {
+            onDragBegin?()
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard mode == .dragOrClick else { return }
-        guard let dragStartMouse, let dragStartWindowOrigin, let window else { return }
+        guard let dragStartMouse, let dragStartWindowOrigin else { return }
 
         let current = NSEvent.mouseLocation
         let deltaX = current.x - dragStartMouse.x
         let deltaY = current.y - dragStartMouse.y
 
-        if !didDrag, hypot(deltaX, deltaY) < dragThreshold {
+        if mode == .dragOrClick, !didDrag, hypot(deltaX, deltaY) < dragThreshold {
             return
         }
 
-        didDrag = true
-        window.setFrameOrigin(
-            NSPoint(
-                x: dragStartWindowOrigin.x + deltaX,
-                y: dragStartWindowOrigin.y + deltaY
-            )
+        if !didDrag {
+            onDragBegin?()
+            didDrag = true
+        }
+
+        let shadowOrigin = NSPoint(
+            x: dragStartWindowOrigin.x + deltaX,
+            y: dragStartWindowOrigin.y + deltaY
         )
+        onShadowDrag?(shadowOrigin)
     }
 
     override func mouseUp(with event: NSEvent) {
-        guard mode == .dragOrClick else { return }
-
-        if !didDrag {
+        if didDrag {
+            onDragEnd?()
+        } else if mode == .dragOrClick {
             onClick?()
         }
 

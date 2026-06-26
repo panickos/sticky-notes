@@ -12,6 +12,9 @@ struct StickyNoteView: View {
     let onDuplicate: () -> Void
     let onColorChange: (NoteColor) -> Void
     let onFocus: () -> Void
+    let onSnapGestureBegin: () -> Void
+    let onSnapGestureEnd: () -> Void
+    let onShadowDrag: (CGPoint) -> Void
 
     @State private var markdown: String
     @State private var noteColor: NoteColor
@@ -28,7 +31,10 @@ struct StickyNoteView: View {
         onDelete: @escaping () -> Void,
         onDuplicate: @escaping () -> Void,
         onColorChange: @escaping (NoteColor) -> Void,
-        onFocus: @escaping () -> Void
+        onFocus: @escaping () -> Void,
+        onSnapGestureBegin: @escaping () -> Void,
+        onSnapGestureEnd: @escaping () -> Void,
+        onShadowDrag: @escaping (CGPoint) -> Void
     ) {
         self.note = note
         self.editingState = editingState
@@ -39,6 +45,9 @@ struct StickyNoteView: View {
         self.onDuplicate = onDuplicate
         self.onColorChange = onColorChange
         self.onFocus = onFocus
+        self.onSnapGestureBegin = onSnapGestureBegin
+        self.onSnapGestureEnd = onSnapGestureEnd
+        self.onShadowDrag = onShadowDrag
         _markdown = State(initialValue: note.content)
         _noteColor = State(initialValue: note.color)
     }
@@ -73,6 +82,9 @@ struct StickyNoteView: View {
                                     WindowDragHandle(
                                         mode: .dragOrClick,
                                         onMouseDown: onFocus,
+                                        onDragBegin: onSnapGestureBegin,
+                                        onDragEnd: onSnapGestureEnd,
+                                        onShadowDrag: onShadowDrag,
                                         onClick: beginEditing
                                     )
                                 }
@@ -167,7 +179,13 @@ struct StickyNoteView: View {
         .contentShape(Rectangle())
         .overlay {
             if interactionConfiguration.isDraggable(dragHandle.region) {
-                WindowDragHandle(mode: .immediate, onMouseDown: onFocus)
+                WindowDragHandle(
+                    mode: .shadowTracked,
+                    onMouseDown: onFocus,
+                    onDragBegin: onSnapGestureBegin,
+                    onDragEnd: onSnapGestureEnd,
+                    onShadowDrag: onShadowDrag
+                )
             }
         }
     }
